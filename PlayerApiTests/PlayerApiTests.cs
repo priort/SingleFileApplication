@@ -1,11 +1,80 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using DotNet.Testcontainers.Builders;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace PlayerApiTests;
 
-public class PlayerApiTests : IAsyncLifetime
+public class PlayerApiTests : IClassFixture<ApiTestServer<Program>>
+{
+    private readonly ApiTestServer<Program> _testServer;
+    
+    private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder()
+        .WithImage("postgres")
+        .WithName("player-db")
+        .WithPortBinding(5432, 5432)
+        .WithWaitStrategy(
+            Wait.ForUnixContainer()
+                .UntilPortIsAvailable(5432))
+        .Build();
+
+    public PlayerApiTests(ApiTestServer<Program> testServer)
+    {
+        _testServer = testServer;
+    }
+
+    [Fact]
+    public async Task RetrievesAllPlayersForAGivenAgeGroup()
+    {
+        var httpClient = _testServer.CreateClient();
+        var response = await httpClient.GetAsync("/players?ageGroup=8");
+        response.EnsureSuccessStatusCode();
+
+        var responseBody = await response.Content.ReadAsStringAsync();
+        List<Player> players = JsonSerializer.Deserialize<List<Player>>(responseBody)!
+            .OrderBy(p => p.DateOfBirth).ToList();
+        Assert.Equal(4, players.Count);
+
+        var playerNamesDoBs = players.Select(p => (p.Name, p.DateOfBirth)).ToList();
+        
+        Assert.Equal(
+            ("Susan", new DateOnly(2016, 1, 2)), 
+            playerNamesDoBs[0]);
+        Assert.Equal(
+            ("Bill", new DateOnly(2016, 2, 4)), 
+            playerNamesDoBs[1]);
+        Assert.Equal(
+            ("Mary", new DateOnly(2016, 4, 3)), 
+            playerNamesDoBs[2]);
+        Assert.Equal(
+            ("James", new DateOnly(2017, 1, 5)), 
+            playerNamesDoBs[3]);
+    }
+    
+}
+
+record Player(
+    [property: JsonPropertyName("id")] Guid Id, 
+    [property: JsonPropertyName("name")]string Name, 
+    [property: JsonPropertyName("dateOfBirth")]DateOnly DateOfBirth);
+
+class PlayerDbContext : DbContext
+{
+    public PlayerDbContext(DbContextOptions options) : base(options)
+    {
+    }
+
+    public DbSet<Player> Players { get; set; }
+}
+
+public class ApiTestServer<T> : WebApplicationFactory<T>, IAsyncLifetime where T : class
 {
     private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder()
         .WithImage("postgres")
@@ -14,14 +83,26 @@ public class PlayerApiTests : IAsyncLifetime
         .WithWaitStrategy(
             Wait.ForUnixContainer()
                 .UntilPortIsAvailable(5432))
-        .Build(); 
+        .Build();
     
-    [Fact]
-    public async Task RetrievesAllPlayersForAGivenAgeGroup()
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        var x = "tom";
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll(typeof(DB.PlayerDbContext));
+            services.AddDbContext<DB.PlayerDbContext>(options =>
+                options.UseNpgsql(_postgresContainer.GetConnectionString()));
+        });
+        builder.UseEnvironment("Development");
     }
 
+    public async Task InitializeAsync()
+    {
+        await _postgresContainer.StartAsync()
+            .ConfigureAwait(false);
+        SetUpDB();
+    }
+    
     private void SetUpDB()
     {
         var postgresConnection = new NpgsqlConnection(_postgresContainer.GetConnectionString());
@@ -66,23 +147,5 @@ public class PlayerApiTests : IAsyncLifetime
         dbContext.Players.Add(new Player(Guid.NewGuid(), "Ben", new DateOnly(2013, 7, 8)));
     }
 
-    public async Task InitializeAsync()
-    {
-        await _postgresContainer.StartAsync()
-            .ConfigureAwait(false);
-        SetUpDB();
-    }
-
     public Task DisposeAsync() => _postgresContainer.DisposeAsync().AsTask();
-}
-
-record Player(Guid Id, string Name, DateOnly DateOfBirth);
-
-class PlayerDbContext : DbContext
-{
-    public PlayerDbContext(DbContextOptions options) : base(options)
-    {
-    }
-
-    public DbSet<Player> Players { get; set; }
 }
