@@ -108,7 +108,6 @@ public class ApiTestServer<T> : WebApplicationFactory<T>, IAsyncLifetime where T
     private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder()
         .WithImage("postgres")
         .WithName("player-db")
-        .WithPortBinding(5432, 5432)
         .WithWaitStrategy(
             Wait.ForUnixContainer()
                 .UntilPortIsAvailable(5432))
