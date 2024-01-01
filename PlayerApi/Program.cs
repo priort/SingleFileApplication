@@ -17,14 +17,22 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapGet("/players", ([FromServices] PlayerDbContext dbContext, int ageGroup) =>
+app.MapGet("/players", (PlayerDbContext dbContext, int ageGroup) =>
 {
     bool PlayerIsCorrectAge(Player player)
     {
         var firstJanAgeGroupNumberOfYearsAgo = 
             new DateOnly(DateTime.Now.Year - ageGroup, 1, 1);
-        return player.DateOfBirth > firstJanAgeGroupNumberOfYearsAgo;
-        
+        if (ageGroup < 10)
+        {
+            return player.DateOfBirth > firstJanAgeGroupNumberOfYearsAgo;
+        }
+
+        var firstJanAgeGroupNumberOfYearsAgoPlus2Years = 
+            new DateOnly(DateTime.Now.Year - ageGroup + 2, 1, 1);
+        return player.DateOfBirth > firstJanAgeGroupNumberOfYearsAgo && 
+               player.DateOfBirth <= firstJanAgeGroupNumberOfYearsAgoPlus2Years;
+
     }
     return dbContext.Players.Where(PlayerIsCorrectAge).ToList();
 });

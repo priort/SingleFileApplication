@@ -4,7 +4,6 @@ using DotNet.Testcontainers.Builders;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
@@ -16,15 +15,6 @@ public class PlayerApiTests : IClassFixture<ApiTestServer<Program>>
 {
     private readonly ApiTestServer<Program> _testServer;
     
-    private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder()
-        .WithImage("postgres")
-        .WithName("player-db")
-        .WithPortBinding(5432, 5432)
-        .WithWaitStrategy(
-            Wait.ForUnixContainer()
-                .UntilPortIsAvailable(5432))
-        .Build();
-
     public PlayerApiTests(ApiTestServer<Program> testServer)
     {
         _testServer = testServer;
@@ -34,30 +24,69 @@ public class PlayerApiTests : IClassFixture<ApiTestServer<Program>>
     public async Task RetrievesAllPlayersForAGivenAgeGroup()
     {
         var httpClient = _testServer.CreateClient();
-        var response = await httpClient.GetAsync("/players?ageGroup=8");
-        response.EnsureSuccessStatusCode();
+        using var responseU8S = await httpClient.GetAsync("/players?ageGroup=8");
+        responseU8S.EnsureSuccessStatusCode();
 
-        var responseBody = await response.Content.ReadAsStringAsync();
-        List<Player> players = JsonSerializer.Deserialize<List<Player>>(responseBody)!
+        var responseBodyU8S = await responseU8S   .Content.ReadAsStringAsync();
+        List<Player> playersU8S = JsonSerializer.Deserialize<List<Player>>(responseBodyU8S)!
             .OrderBy(p => p.DateOfBirth).ToList();
-        Assert.Equal(4, players.Count);
+        Assert.Equal(4, playersU8S.Count);
 
-        var playerNamesDoBs = players.Select(p => (p.Name, p.DateOfBirth)).ToList();
+        var playerNamesDoBsU8S = playersU8S.Select(p => (p.Name, p.DateOfBirth)).ToList();
         
         Assert.Equal(
             ("Susan", new DateOnly(2016, 1, 2)), 
-            playerNamesDoBs[0]);
+            playerNamesDoBsU8S[0]);
         Assert.Equal(
             ("Bill", new DateOnly(2016, 2, 4)), 
-            playerNamesDoBs[1]);
+            playerNamesDoBsU8S[1]);
         Assert.Equal(
             ("Mary", new DateOnly(2016, 4, 3)), 
-            playerNamesDoBs[2]);
+            playerNamesDoBsU8S[2]);
         Assert.Equal(
             ("James", new DateOnly(2017, 1, 5)), 
-            playerNamesDoBs[3]);
+            playerNamesDoBsU8S[3]);
+
+        using var responseU10S = await httpClient.GetAsync("/players?ageGroup=10");
+        responseU10S.EnsureSuccessStatusCode();
+
+        var responseBodyU10S = await responseU10S.Content.ReadAsStringAsync();
+        if (responseBodyU10S == null) throw new ArgumentNullException(nameof(responseBodyU10S));
+        List<Player> playersU10S = JsonSerializer.Deserialize<List<Player>>(responseBodyU10S)!
+            .OrderBy(p => p.DateOfBirth).ToList();
+        Assert.Equal(5, playersU10S.Count);
+
+        var playerNamesDoBsU10S = playersU10S.Select(p => (p.Name, p.DateOfBirth)).ToList();
+        
+        Assert.Equal(("John", new DateOnly(2014, 1, 2)),
+            playerNamesDoBsU10S[0]);
+        Assert.Equal(("Emily", new DateOnly(2014, 1, 3)),
+            playerNamesDoBsU10S[1]);
+        Assert.Equal(("Elliot", new DateOnly(2014, 2, 3)),
+            playerNamesDoBsU10S[2]);
+        Assert.Equal(("Fergal", new DateOnly(2015, 4, 2)),
+            playerNamesDoBsU10S[3]);
+        Assert.Equal(("Emma", new DateOnly(2016, 1, 1)),
+            playerNamesDoBsU10S[4]);
+        
+        
+        
+        using var responseU12S = await httpClient.GetAsync("/players?ageGroup=12");
+        responseU12S.EnsureSuccessStatusCode();
+
+        var responseBodyU12S = await responseU12S.Content.ReadAsStringAsync();
+        if (responseBodyU12S == null) throw new ArgumentNullException(nameof(responseBodyU12S));
+        List<Player> playersU12S = JsonSerializer.Deserialize<List<Player>>(responseBodyU12S)!
+            .OrderBy(p => p.DateOfBirth).ToList();
+        Assert.Equal(5, playersU12S.Count);
+
+        var playerNamesDoBsU12S = playersU12S.Select(p => (p.Name, p.DateOfBirth)).ToList();
+        Assert.Equal(("Maeve", new DateOnly(2013, 2, 4)),playerNamesDoBsU12S[0]);
+        Assert.Equal(("Mark", new DateOnly(2013, 4, 3)),playerNamesDoBsU12S[1]);
+        Assert.Equal(("Ben", new DateOnly(2013, 7, 8)),playerNamesDoBsU12S[2]);
+        Assert.Equal(("Anna", new DateOnly(2013, 12, 31)),playerNamesDoBsU12S[3]);
+        Assert.Equal(("Grace", new DateOnly(2014, 1, 1)),playerNamesDoBsU12S[4]);
     }
-    
 }
 
 record Player(
